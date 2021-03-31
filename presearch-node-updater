@@ -12,9 +12,12 @@ parser = argparse.ArgumentParser(description='Update presearch-node if needed')
 parser.add_argument('registration_code', type=str, help="registration code")
 parser.add_argument('--container-name', type=str, default="presearch-node",
     help='container name')
+parser.add_argument("-f", "--force", help="force update container",
+        action="store_true")
 args = parser.parse_args()
 container_name = args.container_name
 registration_code = args.registration_code
+force = args.force
 
 req = requests.get('https://%s/v2/repositories/%s/tags' % (REGISTRY, REPOSITORY))
 json_req = json.loads(req.text)
@@ -37,7 +40,8 @@ if digest_actual != digest_latest:
     print("a new version of %s is available: %s" % (REPOSITORY, digest_latest))
 else:
     print("no new version available")
-    exit(0)
+    if force == False:
+        exit(0)
 
 sub = subprocess.run(["docker", "pull", REPOSITORY + ":latest"])
 if sub.returncode != 0:
