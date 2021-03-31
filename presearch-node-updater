@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+
+import requests
+import json
+import subprocess
+import argparse
+
+REGISTRY='hub.docker.com'
+REPOSITORY='presearch/node'
+
+parser = argparse.ArgumentParser(description='Update presearch-node if needed')
+parser.add_argument('registration_code', type=str, help="registration code")
+parser.add_argument('--container-name', type=str, default="presearch-node",
+    help='container name')
+args = parser.parse_args()
+container_name = args.container_name
+registration_code = args.registration_code
+
+req = requests.get('https://%s/v2/repositories/%s/tags' % (REGISTRY, REPOSITORY))
+json_req = json.loads(req.text)
+count = int(json_req['count'])
+for res in json_req['results']:
+    if res['name'] == 'latest':
+        res_latest = res
+        break
+
+digest_latest = res_latest['images'][0]['digest']
+digest_latest = REPOSITORY + "@" + digest_latest
+
+sub = subprocess.run(["docker", "inspect", REPOSITORY + ":latest"],
+    capture_output=True)
+json_docker = json.loads(sub.stdout)
+digest_actual = json_docker[0]['RepoDigests'][0]
+
+print(digest_actual)
+if digest_actual != digest_latest:
+    print("a new version of %s is available: %s" % (REPOSITORY, digest_latest))
+else:
+    print("no new version available")
+    exit(0)
+
+sub = subprocess.run(["docker", "pull", REPOSITORY + ":latest"])
+if sub.returncode != 0:
+    print("error pulling %s:latest" % (REPOSITORY))
+    exit(1)
+
+sub = subprocess.run(["docker", "inspect", REPOSITORY + ":latest"],
+    capture_output=True)
+json_docker = json.loads(sub.stdout)
+id_latest = json_docker[0]['Id']
+
+sub = subprocess.run(["docker", "stop", container_name])
+if sub.returncode != 0:
+    print("error stopping %s" % (container_name))
+
+sub = subprocess.run(["docker", "rm", container_name])
+if sub.returncode != 0:
+    print("error removing %s" % (container_name))
+
+sub = subprocess.run(
+    ["docker", "run", "-td", "--name", container_name,
+    "--restart=unless-stopped", "-v", "presearch-node-storage:/app/node", "-e",
+    "REGISTATION_CODE " + registration_code, id_latest])
+if sub.returncode != 0:
+    print("error starting %s" % (container_name))
+    exit(1)
